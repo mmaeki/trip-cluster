@@ -13,7 +13,8 @@ from trip_cluster.config import DEFAULT_USER_AGENT, validate_user_agent
 from trip_cluster.exceptions import GeocodeError
 from trip_cluster.geocoding.base import GeocodeCandidate
 from trip_cluster.geocoding.nominatim import NominatimGeocoder
-from trip_cluster.geocoding.service import GeocodingService, _build_query
+from trip_cluster.geocoding.query import build_query
+from trip_cluster.geocoding.service import GeocodingService
 from trip_cluster.models import Place
 
 
@@ -50,10 +51,10 @@ def cache() -> SQLiteCache:
 
 class TestBuildQuery:
     def test_appends_region_when_present(self) -> None:
-        assert _build_query("Golden Gate Park", "Bay Area, CA") == "Golden Gate Park, Bay Area, CA"
+        assert build_query("Golden Gate Park", "Bay Area, CA") == "Golden Gate Park, Bay Area, CA"
 
     def test_returns_name_only_without_region(self) -> None:
-        assert _build_query("Eiffel Tower", None) == "Eiffel Tower"
+        assert build_query("Eiffel Tower", None) == "Eiffel Tower"
 
 
 class TestGeocodingService:
@@ -149,14 +150,14 @@ class TestGeocodingService:
         assert len(warnings) == 1
         assert "Ambiguous geocode" in warnings[0]
 
-    def test_retries_without_region_when_regional_query_returns_empty(
+    def test_retries_fallback_queries_when_regional_query_returns_empty(
         self, cache: SQLiteCache
     ) -> None:
         warnings: list[str] = []
         geocoder = FakeGeocoder(
             responses={
                 "Golden Gate Park, Bay Area, CA": [],
-                "Golden Gate Park": [GOLDEN_GATE],
+                "Golden Gate Park, CA": [GOLDEN_GATE],
             }
         )
         service = GeocodingService(cache, geocoder, on_warning=warnings.append)
@@ -164,8 +165,8 @@ class TestGeocodingService:
         result = service.geocode_all([_place("Golden Gate Park")], "Bay Area, CA")
 
         assert result.places[0].lat == GOLDEN_GATE.lat
-        assert geocoder.calls == ["Golden Gate Park, Bay Area, CA", "Golden Gate Park"]
-        assert any("retrying without region" in w for w in warnings)
+        assert "Golden Gate Park, CA" in geocoder.calls
+        assert any("trying" in w for w in warnings)
 
     def test_respects_rate_limit_between_api_calls(self, cache: SQLiteCache) -> None:
         geocoder = FakeGeocoder(

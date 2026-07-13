@@ -33,6 +33,37 @@ class GeocodedPlace:
     lng: float
     formatted_address: str
 
+    @property
+    def place_id(self) -> str:
+        """Stable identifier for matrix cache keys."""
+        return f"line_{self.place.line_number}"
+
+
+@dataclass(frozen=True, slots=True)
+class TravelTimeMatrix:
+    """NxN matrix of driving travel times in seconds (asymmetric)."""
+
+    durations: list[list[float]]
+    place_ids: list[str]
+    primary_source: str
+    departure_bucket: str
+
+    @property
+    def size(self) -> int:
+        return len(self.place_ids)
+
+    def symmetrized(self) -> list[list[float]]:
+        """Average (i,j) and (j,i) for clustering algorithms that need symmetry."""
+        n = self.size
+        sym = [[0.0] * n for _ in range(n)]
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    sym[i][j] = 0.0
+                else:
+                    sym[i][j] = (self.durations[i][j] + self.durations[j][i]) / 2.0
+        return sym
+
 
 @dataclass(frozen=True, slots=True)
 class DayPlan:

@@ -1,0 +1,10 @@
+{
+  "place_ids": ["line_1", "line_2", "line_3"],
+  "durations": [
+    [0, 720, 1500],
+    [780, 0, 900],
+    [1600, 950, 0]
+  ],
+  "departure_bucket": "2026-07-15T09:00",
+  "source": "mock"
+}

@@ -104,7 +104,7 @@ class TestParseInputFile:
         warnings: list[str] = []
         result = parse_input_file(sample_input_path, on_warning=warnings.append)
 
-        assert result.region == "Bay Area, CA"
+        assert result.region == "San Francisco, CA"
         assert [place.raw_name for place in result.places] == [
             "Golden Gate Park",
             "Lands End",

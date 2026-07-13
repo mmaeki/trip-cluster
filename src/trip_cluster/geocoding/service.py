@@ -12,6 +12,13 @@ from trip_cluster.config import AMBIGUITY_IMPORTANCE_RATIO, NOMINATIM_REQUEST_IN
 from trip_cluster.exceptions import GeocodeError
 from trip_cluster.geocoding.base import GeocodeCandidate, Geocoder
 from trip_cluster.geocoding.nominatim import NominatimGeocoder
+from trip_cluster.geocoding.query import (
+    MAX_DISTANCE_FROM_ANCHOR_KM,
+    build_fallback_queries,
+    build_query,
+    pick_best_candidate,
+)
+from trip_cluster.matrix.haversine import haversine_km
 from trip_cluster.models import GeocodedPlace, Place
 
 
@@ -49,10 +56,13 @@ class GeocodingService:
     ) -> GeocodingResult:
         geocoded: list[GeocodedPlace] = []
         warnings: list[str] = []
+        anchor_points: list[tuple[float, float]] = []
 
         for place in places:
             try:
-                geocoded.append(self._geocode_one(place, region))
+                result = self._geocode_one(place, region, anchor_points=anchor_points)
+                geocoded.append(result)
+                anchor_points.append((result.lat, result.lng))
             except GeocodeError as exc:
                 if skip_failures:
                     message = (
@@ -65,7 +75,13 @@ class GeocodingService:
 
         return GeocodingResult(places=geocoded, warnings=warnings)
 
-    def _geocode_one(self, place: Place, region: str | None) -> GeocodedPlace:
+    def _geocode_one(
+        self,
+        place: Place,
+        region: str | None,
+        *,
+        anchor_points: list[tuple[float, float]],
+    ) -> GeocodedPlace:
         cached = self._cache.get_geocode(place.raw_name, region)
         if cached is not None:
             return GeocodedPlace(
@@ -75,26 +91,23 @@ class GeocodingService:
                 formatted_address=cached.formatted_address,
             )
 
-        query = _build_query(place.raw_name, region)
-        self._respect_rate_limit()
-        candidates = self._geocoder.search(query)
-        self._last_api_call_at = time.monotonic()
-
-        if not candidates and region:
-            fallback_query = place.raw_name
-            message = (
-                f'No geocoding results for "{query}"; retrying without region as "{fallback_query}"'
-            )
-            self._on_warning(message)
-            self._respect_rate_limit()
-            candidates = self._geocoder.search(fallback_query)
-            self._last_api_call_at = time.monotonic()
-
+        candidates = self._search_with_fallbacks(place.raw_name, region)
         if not candidates:
             raise GeocodeError(f"No geocoding results for {place.raw_name!r}")
 
-        best = max(candidates, key=lambda c: c.importance)
-        self._warn_if_ambiguous(place.raw_name, candidates)
+        best = pick_best_candidate(candidates, region=region, anchor_points=anchor_points)
+        self._warn_if_ambiguous(place.raw_name, candidates, chosen=best)
+
+        if anchor_points:
+            centroid_lat = sum(lat for lat, _ in anchor_points) / len(anchor_points)
+            centroid_lng = sum(lng for _, lng in anchor_points) / len(anchor_points)
+            distance_km = haversine_km(centroid_lat, centroid_lng, best.lat, best.lng)
+            if distance_km > MAX_DISTANCE_FROM_ANCHOR_KM:
+                self._on_warning(
+                    f'Geocoded "{place.raw_name}" to "{best.formatted_address}" '
+                    f"({distance_km:.0f} km from other stops). "
+                    "Consider using a more specific name in your input file."
+                )
 
         self._cache.set_geocode(
             place.raw_name,
@@ -112,6 +125,29 @@ class GeocodingService:
             formatted_address=best.formatted_address,
         )
 
+    def _search_with_fallbacks(
+        self, name: str, region: str | None
+    ) -> list[GeocodeCandidate]:
+        primary_query = build_query(name, region)
+        self._respect_rate_limit()
+        candidates = self._geocoder.search(primary_query)
+        self._last_api_call_at = time.monotonic()
+        if candidates:
+            return candidates
+
+        for fallback_query in build_fallback_queries(name, region):
+            if fallback_query == primary_query:
+                continue
+            message = f'No geocoding results for "{primary_query}"; trying "{fallback_query}"'
+            self._on_warning(message)
+            self._respect_rate_limit()
+            candidates = self._geocoder.search(fallback_query)
+            self._last_api_call_at = time.monotonic()
+            if candidates:
+                return candidates
+
+        return []
+
     def _respect_rate_limit(self) -> None:
         if self._last_api_call_at is None:
             return
@@ -119,11 +155,20 @@ class GeocodingService:
         if elapsed < self._request_interval:
             time.sleep(self._request_interval - elapsed)
 
-    def _warn_if_ambiguous(self, name: str, candidates: list[GeocodeCandidate]) -> None:
+    def _warn_if_ambiguous(
+        self,
+        name: str,
+        candidates: list[GeocodeCandidate],
+        *,
+        chosen: GeocodeCandidate,
+    ) -> None:
         if len(candidates) < 2:
             return
         ranked = sorted(candidates, key=lambda c: c.importance, reverse=True)
-        top, second = ranked[0], ranked[1]
+        top = ranked[0]
+        if chosen is not top:
+            return
+        second = ranked[1]
         if second.importance >= top.importance * AMBIGUITY_IMPORTANCE_RATIO:
             message = (
                 f'Ambiguous geocode for "{name}": using "{top.formatted_address}" '
@@ -146,12 +191,6 @@ def geocode_places(
     """Convenience wrapper around GeocodingService."""
     service = GeocodingService(cache, geocoder, on_warning=on_warning)
     return service.geocode_all(places, region, skip_failures=skip_failures)
-
-
-def _build_query(name: str, region: str | None) -> str:
-    if region:
-        return f"{name}, {region}"
-    return name
 
 
 def _default_warning_handler(message: str) -> None:
