@@ -14,6 +14,7 @@ load_dotenv()
 
 DEFAULT_CACHE_DB = "~/.tripcluster/cache.db"
 DEFAULT_DAY_START = time(9, 0)
+DEFAULT_PLACES_PER_DAY = 5
 ASSUMED_SPEED_KPH = 40.0
 
 NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org"

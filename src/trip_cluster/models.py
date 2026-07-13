@@ -66,6 +66,19 @@ class TravelTimeMatrix:
 
 
 @dataclass(frozen=True, slots=True)
+class ClusterResult:
+    """Partition of place indices into day groups (unordered within each day)."""
+
+    day_assignments: list[list[int]]
+    num_days: int
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def non_empty_days(self) -> int:
+        return sum(1 for day in self.day_assignments if day)
+
+
+@dataclass(frozen=True, slots=True)
 class DayPlan:
     """Ordered places assigned to a single day."""
 

@@ -15,3 +15,7 @@ class GeocodeError(TripClusterError):
 
 class MatrixError(TripClusterError):
     """Raised when the travel-time matrix cannot be built."""
+
+
+class ClusteringError(TripClusterError):
+    """Raised when places cannot be clustered into the requested day groups."""
