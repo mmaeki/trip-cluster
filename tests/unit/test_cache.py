@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from trip_cluster.cache.sqlite import SQLiteCache
+from trip_cluster.cache.sqlite import SQLiteCache, coord_cache_key
 
 
 @pytest.fixture
@@ -69,13 +69,39 @@ class TestGeocodeCache:
 
 
 class TestMatrixCache:
+    _ORIGIN_COORD = coord_cache_key(37.77, -122.48)
+    _DEST_COORD = coord_cache_key(37.78, -122.51)
+
     def test_miss_returns_none(self, cache: SQLiteCache) -> None:
-        assert cache.get_duration("a", "b", "2026-07-15T09:00") is None
+        assert (
+            cache.get_duration(
+                "a",
+                "b",
+                "2026-07-15T09:00",
+                origin_coord=self._ORIGIN_COORD,
+                dest_coord=self._DEST_COORD,
+            )
+            is None
+        )
 
     def test_set_then_get_single_edge(self, cache: SQLiteCache) -> None:
-        cache.set_duration("a", "b", "2026-07-15T09:00", 720.0, source="tomtom")
+        cache.set_duration(
+            "a",
+            "b",
+            "2026-07-15T09:00",
+            720.0,
+            origin_coord=self._ORIGIN_COORD,
+            dest_coord=self._DEST_COORD,
+            source="tomtom",
+        )
 
-        hit = cache.get_duration("a", "b", "2026-07-15T09:00")
+        hit = cache.get_duration(
+            "a",
+            "b",
+            "2026-07-15T09:00",
+            origin_coord=self._ORIGIN_COORD,
+            dest_coord=self._DEST_COORD,
+        )
 
         assert hit is not None
         assert hit.duration_seconds == 720.0
@@ -83,16 +109,61 @@ class TestMatrixCache:
         assert hit.fetched_at
 
     def test_edges_are_directional(self, cache: SQLiteCache) -> None:
-        cache.set_duration("a", "b", "2026-07-15T09:00", 720.0, source="tomtom")
+        cache.set_duration(
+            "a",
+            "b",
+            "2026-07-15T09:00",
+            720.0,
+            origin_coord=self._ORIGIN_COORD,
+            dest_coord=self._DEST_COORD,
+            source="tomtom",
+        )
 
-        assert cache.get_duration("b", "a", "2026-07-15T09:00") is None
+        assert (
+            cache.get_duration(
+                "b",
+                "a",
+                "2026-07-15T09:00",
+                origin_coord=self._DEST_COORD,
+                dest_coord=self._ORIGIN_COORD,
+            )
+            is None
+        )
 
     def test_departure_bucket_is_part_of_key(self, cache: SQLiteCache) -> None:
-        cache.set_duration("a", "b", "2026-07-15T09:00", 720.0, source="tomtom")
-        cache.set_duration("a", "b", "2026-07-15T17:00", 1500.0, source="tomtom")
+        cache.set_duration(
+            "a",
+            "b",
+            "2026-07-15T09:00",
+            720.0,
+            origin_coord=self._ORIGIN_COORD,
+            dest_coord=self._DEST_COORD,
+            source="tomtom",
+        )
+        cache.set_duration(
+            "a",
+            "b",
+            "2026-07-15T17:00",
+            1500.0,
+            origin_coord=self._ORIGIN_COORD,
+            dest_coord=self._DEST_COORD,
+            source="tomtom",
+        )
 
-        morning = cache.get_duration("a", "b", "2026-07-15T09:00")
-        evening = cache.get_duration("a", "b", "2026-07-15T17:00")
+        morning = cache.get_duration(
+            "a",
+            "b",
+            "2026-07-15T09:00",
+            origin_coord=self._ORIGIN_COORD,
+            dest_coord=self._DEST_COORD,
+        )
+        evening = cache.get_duration(
+            "a",
+            "b",
+            "2026-07-15T17:00",
+            origin_coord=self._ORIGIN_COORD,
+            dest_coord=self._DEST_COORD,
+        )
 
         assert morning is not None and morning.duration_seconds == 720.0
         assert evening is not None and evening.duration_seconds == 1500.0
@@ -100,25 +171,128 @@ class TestMatrixCache:
     def test_bulk_insert(self, cache: SQLiteCache) -> None:
         cache.set_durations(
             [
-                ("a", "b", "2026-07-15T09:00", 100.0),
-                ("b", "a", "2026-07-15T09:00", 130.0),
-                ("a", "c", "2026-07-15T09:00", 200.0),
+                ("a", "b", "2026-07-15T09:00", self._ORIGIN_COORD, self._DEST_COORD, 100.0),
+                ("b", "a", "2026-07-15T09:00", self._DEST_COORD, self._ORIGIN_COORD, 130.0),
+                (
+                    "a",
+                    "c",
+                    "2026-07-15T09:00",
+                    self._ORIGIN_COORD,
+                    coord_cache_key(37.79, -122.52),
+                    200.0,
+                ),
             ],
             source="osrm",
         )
 
-        assert cache.get_duration("a", "b", "2026-07-15T09:00").duration_seconds == 100.0
-        assert cache.get_duration("b", "a", "2026-07-15T09:00").duration_seconds == 130.0
-        assert cache.get_duration("a", "c", "2026-07-15T09:00").source == "osrm"
+        assert (
+            cache.get_duration(
+                "a",
+                "b",
+                "2026-07-15T09:00",
+                origin_coord=self._ORIGIN_COORD,
+                dest_coord=self._DEST_COORD,
+            ).duration_seconds
+            == 100.0
+        )
+        assert (
+            cache.get_duration(
+                "b",
+                "a",
+                "2026-07-15T09:00",
+                origin_coord=self._DEST_COORD,
+                dest_coord=self._ORIGIN_COORD,
+            ).duration_seconds
+            == 130.0
+        )
+        assert (
+            cache.get_duration(
+                "a",
+                "c",
+                "2026-07-15T09:00",
+                origin_coord=self._ORIGIN_COORD,
+                dest_coord=coord_cache_key(37.79, -122.52),
+            ).source
+            == "osrm"
+        )
 
     def test_set_overwrites_existing_edge(self, cache: SQLiteCache) -> None:
-        cache.set_duration("a", "b", "2026-07-15T09:00", 100.0, source="haversine")
-        cache.set_duration("a", "b", "2026-07-15T09:00", 90.0, source="tomtom")
+        cache.set_duration(
+            "a",
+            "b",
+            "2026-07-15T09:00",
+            100.0,
+            origin_coord=self._ORIGIN_COORD,
+            dest_coord=self._DEST_COORD,
+            source="haversine",
+        )
+        cache.set_duration(
+            "a",
+            "b",
+            "2026-07-15T09:00",
+            90.0,
+            origin_coord=self._ORIGIN_COORD,
+            dest_coord=self._DEST_COORD,
+            source="tomtom",
+        )
 
-        hit = cache.get_duration("a", "b", "2026-07-15T09:00")
+        hit = cache.get_duration(
+            "a",
+            "b",
+            "2026-07-15T09:00",
+            origin_coord=self._ORIGIN_COORD,
+            dest_coord=self._DEST_COORD,
+        )
         assert hit is not None
         assert hit.duration_seconds == 90.0
         assert hit.source == "tomtom"
+
+    def test_coord_change_is_a_cache_miss(self, cache: SQLiteCache) -> None:
+        cache.set_duration(
+            "a",
+            "b",
+            "2026-07-15T09:00",
+            100.0,
+            origin_coord=self._ORIGIN_COORD,
+            dest_coord=self._DEST_COORD,
+            source="osrm",
+        )
+
+        moved_dest = coord_cache_key(33.66, -117.90)
+        assert (
+            cache.get_duration(
+                "a",
+                "b",
+                "2026-07-15T09:00",
+                origin_coord=self._ORIGIN_COORD,
+                dest_coord=moved_dest,
+            )
+            is None
+        )
+
+    def test_set_geocode_coord_change_clears_matrix(self, cache: SQLiteCache) -> None:
+        cache.set_duration(
+            "a",
+            "b",
+            "2026-07-15T09:00",
+            100.0,
+            origin_coord=self._ORIGIN_COORD,
+            dest_coord=self._DEST_COORD,
+            source="osrm",
+        )
+        cache.set_geocode("Park", None, lat=1.0, lng=1.0, formatted_address="old")
+        cache.set_geocode("Park", None, lat=2.0, lng=2.0, formatted_address="new")
+
+        assert (
+            cache.get_duration(
+                "a",
+                "b",
+                "2026-07-15T09:00",
+                origin_coord=self._ORIGIN_COORD,
+                dest_coord=self._DEST_COORD,
+            )
+            is None
+        )
 
 
 class TestPersistence:
@@ -127,11 +301,28 @@ class TestPersistence:
 
         with SQLiteCache(db_path) as cache:
             cache.set_geocode("Park", None, lat=1.0, lng=2.0, formatted_address="x")
-            cache.set_duration("a", "b", "2026-07-15T09:00", 300.0, source="tomtom")
+            cache.set_duration(
+                "a",
+                "b",
+                "2026-07-15T09:00",
+                300.0,
+                origin_coord=coord_cache_key(1.0, 2.0),
+                dest_coord=coord_cache_key(3.0, 4.0),
+                source="tomtom",
+            )
 
         with SQLiteCache(db_path) as reopened:
             assert reopened.get_geocode("Park", None) is not None
-            assert reopened.get_duration("a", "b", "2026-07-15T09:00") is not None
+            assert (
+                reopened.get_duration(
+                    "a",
+                    "b",
+                    "2026-07-15T09:00",
+                    origin_coord=coord_cache_key(1.0, 2.0),
+                    dest_coord=coord_cache_key(3.0, 4.0),
+                )
+                is not None
+            )
 
     def test_creates_parent_directories(self, tmp_path: Path) -> None:
         nested = tmp_path / "deeply" / "nested" / "cache.db"

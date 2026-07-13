@@ -6,7 +6,7 @@ import sys
 from collections.abc import Callable
 from datetime import date, datetime, time
 
-from trip_cluster.cache.sqlite import SQLiteCache
+from trip_cluster.cache.sqlite import SQLiteCache, coord_cache_key
 from trip_cluster.config import DEFAULT_DAY_START, is_traffic_routing_enabled
 from trip_cluster.exceptions import MatrixError
 from trip_cluster.matrix.haversine import HaversineMatrixProvider, partial_durations
@@ -115,14 +115,18 @@ class MatrixService:
         trip_date: date,
         depart_at: time,
     ) -> tuple[list[list[float]], str]:
-        cached = _load_matrix_from_cache(self._cache, place_ids, departure_bucket)
+        cached = _load_matrix_from_cache(
+            self._cache, place_ids, coordinates, departure_bucket
+        )
         if cached is not None:
             return cached, "cache"
 
         matrix, source = self._fetch_full_with_fallback(
             coordinates, trip_date=trip_date, depart_at=depart_at
         )
-        _save_matrix_to_cache(self._cache, place_ids, departure_bucket, matrix, source)
+        _save_matrix_to_cache(
+            self._cache, place_ids, coordinates, departure_bucket, matrix, source
+        )
         return matrix, source
 
     def _apply_tagged_overrides(
@@ -139,13 +143,21 @@ class MatrixService:
         n = len(place_ids)
         origin_id = place_ids[tagged_index]
         tagged_coord = coordinates[tagged_index]
+        tagged_coord_key = coord_cache_key(*tagged_coord)
 
         # Row: tagged place -> all destinations at tagged departure time
         for j in range(n):
             if j == tagged_index:
                 continue
             dest_id = place_ids[j]
-            cached = self._cache.get_duration(origin_id, dest_id, departure_bucket)
+            dest_coord_key = coord_cache_key(*coordinates[j])
+            cached = self._cache.get_duration(
+                origin_id,
+                dest_id,
+                departure_bucket,
+                origin_coord=tagged_coord_key,
+                dest_coord=dest_coord_key,
+            )
             if cached is not None:
                 matrix[tagged_index][j] = cached.duration_seconds
                 continue
@@ -158,14 +170,29 @@ class MatrixService:
             )
             duration = row[0][0]
             matrix[tagged_index][j] = duration
-            self._cache.set_duration(origin_id, dest_id, departure_bucket, duration, source=source)
+            self._cache.set_duration(
+                origin_id,
+                dest_id,
+                departure_bucket,
+                duration,
+                origin_coord=tagged_coord_key,
+                dest_coord=dest_coord_key,
+                source=source,
+            )
 
         # Column: all origins -> tagged place at tagged departure time
         for i in range(n):
             if i == tagged_index:
                 continue
             origin_pid = place_ids[i]
-            cached = self._cache.get_duration(origin_pid, origin_id, departure_bucket)
+            origin_coord_key = coord_cache_key(*coordinates[i])
+            cached = self._cache.get_duration(
+                origin_pid,
+                origin_id,
+                departure_bucket,
+                origin_coord=origin_coord_key,
+                dest_coord=tagged_coord_key,
+            )
             if cached is not None:
                 matrix[i][tagged_index] = cached.duration_seconds
                 continue
@@ -179,7 +206,13 @@ class MatrixService:
             duration = col[0][0]
             matrix[i][tagged_index] = duration
             self._cache.set_duration(
-                origin_pid, origin_id, departure_bucket, duration, source=source
+                origin_pid,
+                origin_id,
+                departure_bucket,
+                duration,
+                origin_coord=origin_coord_key,
+                dest_coord=tagged_coord_key,
+                source=source,
             )
 
     def _traffic_tomtom_available(self) -> bool:
@@ -332,15 +365,23 @@ def format_departure_bucket(trip_date: date, depart_at: time) -> str:
 def _load_matrix_from_cache(
     cache: SQLiteCache,
     place_ids: list[str],
+    coordinates: list[tuple[float, float]],
     departure_bucket: str,
 ) -> list[list[float]] | None:
     n = len(place_ids)
+    coord_keys = [coord_cache_key(lat, lng) for lat, lng in coordinates]
     matrix = [[0.0] * n for _ in range(n)]
     for i in range(n):
         for j in range(n):
             if i == j:
                 continue
-            hit = cache.get_duration(place_ids[i], place_ids[j], departure_bucket)
+            hit = cache.get_duration(
+                place_ids[i],
+                place_ids[j],
+                departure_bucket,
+                origin_coord=coord_keys[i],
+                dest_coord=coord_keys[j],
+            )
             if hit is None:
                 return None
             matrix[i][j] = hit.duration_seconds
@@ -350,13 +391,22 @@ def _load_matrix_from_cache(
 def _save_matrix_to_cache(
     cache: SQLiteCache,
     place_ids: list[str],
+    coordinates: list[tuple[float, float]],
     departure_bucket: str,
     matrix: list[list[float]],
     source: str,
 ) -> None:
     n = len(place_ids)
+    coord_keys = [coord_cache_key(lat, lng) for lat, lng in coordinates]
     entries = [
-        (place_ids[i], place_ids[j], departure_bucket, matrix[i][j])
+        (
+            place_ids[i],
+            place_ids[j],
+            departure_bucket,
+            coord_keys[i],
+            coord_keys[j],
+            matrix[i][j],
+        )
         for i in range(n)
         for j in range(n)
         if i != j

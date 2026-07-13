@@ -511,7 +511,7 @@ flowchart TD
 - [x] **5.** Agglomerative clustering with symmetrized matrix, `--days`, `--max-per-day` split pass
 - [x] **6.** Nearest-neighbor + 2-opt ordering with timed-place anchors
 - [x] **7.** Text summary, JSON export, and folium HTML map
-- [ ] **8.** Typer CLI and end-to-end orchestration in `cli.py`
+- [x] **8.** Typer CLI and end-to-end orchestration in `cli.py`
 - [ ] **9.** Full pipeline integration test with mocked geocoder and matrix providers
 
 ---

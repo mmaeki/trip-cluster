@@ -13,7 +13,7 @@ from trip_cluster.exceptions import GeocodeError
 from trip_cluster.geocoding.base import GeocodeCandidate, Geocoder
 from trip_cluster.geocoding.nominatim import NominatimGeocoder
 from trip_cluster.geocoding.query import (
-    MAX_DISTANCE_FROM_ANCHOR_KM,
+    anchor_distance_threshold_km,
     build_fallback_queries,
     build_query,
     pick_best_candidate,
@@ -84,12 +84,21 @@ class GeocodingService:
     ) -> GeocodedPlace:
         cached = self._cache.get_geocode(place.raw_name, region)
         if cached is not None:
-            return GeocodedPlace(
-                place=place,
-                lat=cached.lat,
-                lng=cached.lng,
-                formatted_address=cached.formatted_address,
-            )
+            if anchor_points and not self._cached_coords_plausible(
+                cached.lat, cached.lng, anchor_points
+            ):
+                message = (
+                    f'Cached geocode for "{place.raw_name}" looks too far from other stops; '
+                    "re-resolving."
+                )
+                self._on_warning(message)
+            else:
+                return GeocodedPlace(
+                    place=place,
+                    lat=cached.lat,
+                    lng=cached.lng,
+                    formatted_address=cached.formatted_address,
+                )
 
         candidates = self._search_with_fallbacks(place.raw_name, region)
         if not candidates:
@@ -102,7 +111,8 @@ class GeocodingService:
             centroid_lat = sum(lat for lat, _ in anchor_points) / len(anchor_points)
             centroid_lng = sum(lng for _, lng in anchor_points) / len(anchor_points)
             distance_km = haversine_km(centroid_lat, centroid_lng, best.lat, best.lng)
-            if distance_km > MAX_DISTANCE_FROM_ANCHOR_KM:
+            max_distance_km = anchor_distance_threshold_km(anchor_points)
+            if distance_km > max_distance_km:
                 self._on_warning(
                     f'Geocoded "{place.raw_name}" to "{best.formatted_address}" '
                     f"({distance_km:.0f} km from other stops). "
@@ -147,6 +157,17 @@ class GeocodingService:
                 return candidates
 
         return []
+
+    def _cached_coords_plausible(
+        self,
+        lat: float,
+        lng: float,
+        anchor_points: list[tuple[float, float]],
+    ) -> bool:
+        centroid_lat = sum(a_lat for a_lat, _ in anchor_points) / len(anchor_points)
+        centroid_lng = sum(a_lng for _, a_lng in anchor_points) / len(anchor_points)
+        distance_km = haversine_km(centroid_lat, centroid_lng, lat, lng)
+        return distance_km <= anchor_distance_threshold_km(anchor_points)
 
     def _respect_rate_limit(self) -> None:
         if self._last_api_call_at is None:

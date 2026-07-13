@@ -8,6 +8,11 @@ _ALIASES: dict[str, str] = {
     "mt tam": "Mount Tamalpais",
     "mt. tamalpais": "Mount Tamalpais",
     "ggp": "Golden Gate Park",
+    # Nominatim maps "Del Mar County Fair" to Costa Mesa; the SD fair is here:
+    "del mar county fair": "San Diego County Fairgrounds",
+    "del mar fairgrounds": "San Diego County Fairgrounds",
+    "del mar fair": "San Diego County Fairgrounds",
+    "san diego county fair": "San Diego County Fairgrounds",
 }
 
 

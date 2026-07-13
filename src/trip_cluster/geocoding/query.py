@@ -13,9 +13,10 @@ MAX_DISTANCE_FROM_ANCHOR_KM = 250.0
 
 
 def build_query(name: str, region: str | None) -> str:
+    expanded = expand_place_alias(name)
     if region:
-        return f"{name}, {region}"
-    return name
+        return f"{expanded}, {region}"
+    return expanded
 
 
 def build_fallback_queries(name: str, region: str | None) -> list[str]:
@@ -43,10 +44,28 @@ def build_fallback_queries(name: str, region: str | None) -> list[str]:
             if full_state:
                 add(f"{expanded}, {full_state}")
 
+    if expanded == "San Diego County Fairgrounds":
+        add("San Diego County Fairgrounds, Del Mar, California")
+
     add(expanded)
     # Bare name last — often ambiguous (e.g. "Mt. Tam" -> Australia).
     add(name)
     return queries
+
+
+def anchor_distance_threshold_km(anchor_points: list[tuple[float, float]]) -> float:
+    """Max plausible distance from the trip centroid given resolved stops so far."""
+    if not anchor_points:
+        return MAX_DISTANCE_FROM_ANCHOR_KM
+    if len(anchor_points) == 1:
+        return min(MAX_DISTANCE_FROM_ANCHOR_KM, 100.0)
+
+    centroid_lat = sum(lat for lat, _ in anchor_points) / len(anchor_points)
+    centroid_lng = sum(lng for _, lng in anchor_points) / len(anchor_points)
+    spread_km = max(
+        haversine_km(centroid_lat, centroid_lng, lat, lng) for lat, lng in anchor_points
+    )
+    return min(max(spread_km * 2.0 + 20.0, 40.0), MAX_DISTANCE_FROM_ANCHOR_KM)
 
 
 def pick_best_candidate(
@@ -62,11 +81,12 @@ def pick_best_candidate(
     if anchor_points:
         centroid_lat = sum(lat for lat, _ in anchor_points) / len(anchor_points)
         centroid_lng = sum(lng for _, lng in anchor_points) / len(anchor_points)
+        max_distance_km = anchor_distance_threshold_km(anchor_points)
 
         nearby = [
             c
             for c in candidates
-            if haversine_km(centroid_lat, centroid_lng, c.lat, c.lng) <= MAX_DISTANCE_FROM_ANCHOR_KM
+            if haversine_km(centroid_lat, centroid_lng, c.lat, c.lng) <= max_distance_km
         ]
         if nearby:
             return min(

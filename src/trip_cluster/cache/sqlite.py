@@ -27,10 +27,12 @@ CREATE TABLE IF NOT EXISTS matrix_cache (
     origin_id         TEXT NOT NULL,
     dest_id           TEXT NOT NULL,
     departure_bucket  TEXT NOT NULL,
+    origin_coord      TEXT NOT NULL,
+    dest_coord        TEXT NOT NULL,
     duration_seconds  REAL NOT NULL,
     source            TEXT NOT NULL,
     fetched_at        TEXT NOT NULL,
-    PRIMARY KEY (origin_id, dest_id, departure_bucket)
+    PRIMARY KEY (origin_id, dest_id, departure_bucket, origin_coord, dest_coord)
 );
 """
 
@@ -72,6 +74,7 @@ class SQLiteCache:
             self._conn = sqlite3.connect(":memory:")
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate_schema()
         self._conn.commit()
 
     # -- geocode cache -------------------------------------------------
@@ -104,6 +107,12 @@ class SQLiteCache:
         osm_id: str | None = None,
     ) -> None:
         """Store (or overwrite) the geocode for a place."""
+        existing = self.get_geocode(name, region)
+        if existing is not None and (
+            abs(existing.lat - lat) > 1e-4 or abs(existing.lng - lng) > 1e-4
+        ):
+            self.clear_matrix_cache()
+
         self._conn.execute(
             "INSERT OR REPLACE INTO geocode_cache"
             " (cache_key, lat, lng, formatted_address, osm_id, fetched_at)"
@@ -115,13 +124,20 @@ class SQLiteCache:
     # -- matrix cache --------------------------------------------------
 
     def get_duration(
-        self, origin_id: str, dest_id: str, departure_bucket: str
+        self,
+        origin_id: str,
+        dest_id: str,
+        departure_bucket: str,
+        *,
+        origin_coord: str,
+        dest_coord: str,
     ) -> CachedDuration | None:
         """Return the cached travel time for one directed edge, or None."""
         row = self._conn.execute(
             "SELECT duration_seconds, source, fetched_at FROM matrix_cache"
-            " WHERE origin_id = ? AND dest_id = ? AND departure_bucket = ?",
-            (origin_id, dest_id, departure_bucket),
+            " WHERE origin_id = ? AND dest_id = ? AND departure_bucket = ?"
+            " AND origin_coord = ? AND dest_coord = ?",
+            (origin_id, dest_id, departure_bucket, origin_coord, dest_coord),
         ).fetchone()
         if row is None:
             return None
@@ -133,24 +149,26 @@ class SQLiteCache:
 
     def set_durations(
         self,
-        entries: list[tuple[str, str, str, float]],
+        entries: list[tuple[str, str, str, str, str, float]],
         *,
         source: str,
     ) -> None:
         """Store many directed edges at once.
 
-        Each entry is (origin_id, dest_id, departure_bucket, duration_seconds).
+        Each entry is
+        (origin_id, dest_id, departure_bucket, origin_coord, dest_coord, duration_seconds).
         A full NxN matrix response is inserted in one transaction, which is
         far faster than N*N separate commits.
         """
         now = _now()
         self._conn.executemany(
             "INSERT OR REPLACE INTO matrix_cache"
-            " (origin_id, dest_id, departure_bucket, duration_seconds, source, fetched_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            " (origin_id, dest_id, departure_bucket, origin_coord, dest_coord,"
+            " duration_seconds, source, fetched_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                (origin_id, dest_id, bucket, duration, source, now)
-                for origin_id, dest_id, bucket, duration in entries
+                (origin_id, dest_id, bucket, origin_coord, dest_coord, duration, source, now)
+                for origin_id, dest_id, bucket, origin_coord, dest_coord, duration in entries
             ],
         )
         self._conn.commit()
@@ -162,12 +180,43 @@ class SQLiteCache:
         departure_bucket: str,
         duration_seconds: float,
         *,
+        origin_coord: str,
+        dest_coord: str,
         source: str,
     ) -> None:
         """Store a single directed edge."""
         self.set_durations(
-            [(origin_id, dest_id, departure_bucket, duration_seconds)], source=source
+            [
+                (
+                    origin_id,
+                    dest_id,
+                    departure_bucket,
+                    origin_coord,
+                    dest_coord,
+                    duration_seconds,
+                )
+            ],
+            source=source,
         )
+
+    def clear_matrix_cache(self) -> None:
+        """Drop all cached travel-time edges (e.g. after a geocode correction)."""
+        self._conn.execute("DELETE FROM matrix_cache")
+        self._conn.commit()
+
+    def _migrate_schema(self) -> None:
+        row = self._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='matrix_cache'"
+        ).fetchone()
+        if row is None:
+            return
+        columns = {
+            col["name"]
+            for col in self._conn.execute("PRAGMA table_info(matrix_cache)").fetchall()
+        }
+        if "origin_coord" not in columns:
+            self._conn.execute("DROP TABLE matrix_cache")
+            self._conn.executescript(_SCHEMA)
 
     # -- lifecycle -----------------------------------------------------
 
@@ -184,6 +233,11 @@ class SQLiteCache:
         tb: TracebackType | None,
     ) -> None:
         self.close()
+
+
+def coord_cache_key(lat: float, lng: float) -> str:
+    """Stable cache key for a coordinate pair."""
+    return f"{lat:.4f},{lng:.4f}"
 
 
 def _geocode_key(name: str, region: str | None) -> str:
