@@ -28,6 +28,15 @@ TOMTOM_MAX_RETRIES = 3
 OSRM_BASE_URL = "https://router.project-osrm.org"
 OSRM_MAX_RETRIES = 3
 
+TWO_OPT_MAX_ITERATIONS = 100
+# Soft time-tag penalty: 30 minutes arrival deviation ~= 10 minutes driving time.
+TIME_DEVIATION_TARGET_SECONDS = 30 * 60
+TIME_DEVIATION_DRIVE_EQUIVALENT_SECONDS = 10 * 60
+TIME_DEVIATION_PENALTY_LAMBDA = (
+    TIME_DEVIATION_DRIVE_EQUIVALENT_SECONDS / TIME_DEVIATION_TARGET_SECONDS
+)
+TIME_REFINEMENT_MAX_SWAPS = 50
+
 # If the second result's importance is within this fraction of the top result,
 # we warn that the place name may be ambiguous.
 AMBIGUITY_IMPORTANCE_RATIO = 0.85

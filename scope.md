@@ -509,7 +509,7 @@ flowchart TD
 - [x] **3.** Nominatim geocoder + cache-aware service with failure handling
 - [x] **4.** OSRM matrix (default) + optional TomTom traffic mode + haversine fallbacks, with tagged-time overrides and caching
 - [x] **5.** Agglomerative clustering with symmetrized matrix, `--days`, `--max-per-day` split pass
-- [ ] **6.** Nearest-neighbor + 2-opt ordering with timed-place anchors
+- [x] **6.** Nearest-neighbor + 2-opt ordering with timed-place anchors
 - [ ] **7.** Text summary, JSON export, and folium HTML map
 - [ ] **8.** Typer CLI and end-to-end orchestration in `cli.py`
 - [ ] **9.** Full pipeline integration test with mocked geocoder and matrix providers
