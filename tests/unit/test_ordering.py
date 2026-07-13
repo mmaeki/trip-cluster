@@ -11,6 +11,7 @@ from trip_cluster.routing.ordering import (
     _two_opt,
     build_day_plans,
     order_day_route,
+    warn_for_tags_before_day_start,
 )
 
 
@@ -91,6 +92,42 @@ class TestOrderDayRoute:
 
 
 class TestBuildDayPlans:
+    def test_warns_when_tag_is_before_day_start(self) -> None:
+        places = [
+            _place("Mt. Tam", 1, fixed=time(6, 0)),
+            _place("Lands End", 2, fixed=time(10, 0)),
+        ]
+        warnings: list[str] = []
+
+        result = warn_for_tags_before_day_start(
+            places,
+            day_start=time(9, 0),
+            on_warning=warnings.append,
+        )
+
+        assert result == warnings
+        assert len(warnings) == 1
+        assert '"Mt. Tam" is tagged for 06:00' in warnings[0]
+        assert "before --day-start 09:00" in warnings[0]
+        assert "set --day-start to 06:00 or earlier" in warnings[0]
+
+    def test_build_day_plans_emits_early_tag_warning(self) -> None:
+        places = [_place("Mt. Tam", 1, fixed=time(6, 0))]
+        matrix = _matrix([[0.0]])
+        cluster = ClusterResult(day_assignments=[[0]], num_days=1)
+        warnings: list[str] = []
+
+        build_day_plans(
+            places,
+            cluster,
+            matrix,
+            day_start=time(9, 0),
+            on_warning=warnings.append,
+        )
+
+        assert len(warnings) == 1
+        assert "before --day-start 09:00" in warnings[0]
+
     def test_builds_only_non_empty_days(self) -> None:
         places = [_place("A", 1), _place("B", 2), _place("C", 3)]
         matrix = _matrix(

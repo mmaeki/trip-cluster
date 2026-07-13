@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_3e0ec6f25dfdab62f0f461c8da51fa13 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+            <div class="folium-map" id="map_3e0ec6f25dfdab62f0f461c8da51fa13" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_3e0ec6f25dfdab62f0f461c8da51fa13 = L.map(
+                "map_3e0ec6f25dfdab62f0f461c8da51fa13",
+                {
+                    center: [37.81203178, -122.51239763999999],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 11,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_2fab830cc857b125e5b6c3bb8b9dab96 = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_2fab830cc857b125e5b6c3bb8b9dab96.addTo(map_3e0ec6f25dfdab62f0f461c8da51fa13);
+        
+    
+            var feature_group_626eb258704cef760c14abe188dd4073 = L.featureGroup(
+                {
+}
+            );
+        
+    
+            var marker_a7ae1483e9b27012469ad24214e5e52e = L.marker(
+                [37.7693681, -122.4821837],
+                {
+}
+            ).addTo(feature_group_626eb258704cef760c14abe188dd4073);
+        
+    
+            var icon_2a85a4fa3e49c4e8f7a380ad354df717 = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "blue",
+  "iconColor": "white",
+  "icon": "info-sign",
+  "prefix": "glyphicon",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+        var popup_cf074525a5c3daa0d4b40e9cafea0979 = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_4a33fa3bec5f85cbcfd17a6c0ccab66f = $(`<div id="html_4a33fa3bec5f85cbcfd17a6c0ccab66f" style="width: 100.0%; height: 100.0%;"><b>Golden Gate Park</b><br>Day 1, stop 1</div>`)[0];
+                popup_cf074525a5c3daa0d4b40e9cafea0979.setContent(html_4a33fa3bec5f85cbcfd17a6c0ccab66f);
+            
+        
+
+        marker_a7ae1483e9b27012469ad24214e5e52e.bindPopup(popup_cf074525a5c3daa0d4b40e9cafea0979)
+        ;
+
+        
+    
+    
+            marker_a7ae1483e9b27012469ad24214e5e52e.bindTooltip(
+                `<div>
+                     Day 1 #1: Golden Gate Park
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_a7ae1483e9b27012469ad24214e5e52e.setIcon(icon_2a85a4fa3e49c4e8f7a380ad354df717);
+            
+    
+            var marker_558e2e50b62e1c4aeea58af0688d9536 = L.marker(
+                [37.7976582, -122.481705],
+                {
+}
+            ).addTo(feature_group_626eb258704cef760c14abe188dd4073);
+        
+    
+            var icon_7796e2c43048f8a977094ee84b7d41bb = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "blue",
+  "iconColor": "white",
+  "icon": "info-sign",
+  "prefix": "glyphicon",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+        var popup_71bb3e90a332bab37cb1c0fe8cf9ee7e = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_008ea0527114a737e7c68a70dd1b87e4 = $(`<div id="html_008ea0527114a737e7c68a70dd1b87e4" style="width: 100.0%; height: 100.0%;"><b>Baker Beach</b><br>Day 1, stop 2</div>`)[0];
+                popup_71bb3e90a332bab37cb1c0fe8cf9ee7e.setContent(html_008ea0527114a737e7c68a70dd1b87e4);
+            
+        
+
+        marker_558e2e50b62e1c4aeea58af0688d9536.bindPopup(popup_71bb3e90a332bab37cb1c0fe8cf9ee7e)
+        ;
+
+        
+    
+    
+            marker_558e2e50b62e1c4aeea58af0688d9536.bindTooltip(
+                `<div>
+                     Day 1 #2: Baker Beach
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_558e2e50b62e1c4aeea58af0688d9536.setIcon(icon_7796e2c43048f8a977094ee84b7d41bb);
+            
+    
+            var marker_46ba7cf92889cd341213dd610c9214da = L.marker(
+                [37.7838437, -122.5067531],
+                {
+}
+            ).addTo(feature_group_626eb258704cef760c14abe188dd4073);
+        
+    
+            var icon_c7ac9948295ef367c33dc1f6ca983fe5 = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "blue",
+  "iconColor": "white",
+  "icon": "info-sign",
+  "prefix": "glyphicon",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+        var popup_7052c2251c531500d9445ede82e794bf = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_f9dadea43d650ec19f2183986778fb18 = $(`<div id="html_f9dadea43d650ec19f2183986778fb18" style="width: 100.0%; height: 100.0%;"><b>Lands End</b><br>Day 1, stop 3</div>`)[0];
+                popup_7052c2251c531500d9445ede82e794bf.setContent(html_f9dadea43d650ec19f2183986778fb18);
+            
+        
+
+        marker_46ba7cf92889cd341213dd610c9214da.bindPopup(popup_7052c2251c531500d9445ede82e794bf)
+        ;
+
+        
+    
+    
+            marker_46ba7cf92889cd341213dd610c9214da.bindTooltip(
+                `<div>
+                     Day 1 #3: Lands End
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_46ba7cf92889cd341213dd610c9214da.setIcon(icon_c7ac9948295ef367c33dc1f6ca983fe5);
+            
+    
+            var marker_547b475088413f87665140ecf1fab70b = L.marker(
+                [37.780252, -122.513625],
+                {
+}
+            ).addTo(feature_group_626eb258704cef760c14abe188dd4073);
+        
+    
+            var icon_b765dcac2c74ddf6b6292123ecbf5046 = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "blue",
+  "iconColor": "white",
+  "icon": "info-sign",
+  "prefix": "glyphicon",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+        var popup_8abedb0a98cbf45520f0bb9c962f9452 = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_e6728b8eb03599a3fd4f95c1d8c599e5 = $(`<div id="html_e6728b8eb03599a3fd4f95c1d8c599e5" style="width: 100.0%; height: 100.0%;"><b>Sutro Baths</b><br>Day 1, stop 4</div>`)[0];
+                popup_8abedb0a98cbf45520f0bb9c962f9452.setContent(html_e6728b8eb03599a3fd4f95c1d8c599e5);
+            
+        
+
+        marker_547b475088413f87665140ecf1fab70b.bindPopup(popup_8abedb0a98cbf45520f0bb9c962f9452)
+        ;
+
+        
+    
+    
+            marker_547b475088413f87665140ecf1fab70b.bindTooltip(
+                `<div>
+                     Day 1 #4: Sutro Baths
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_547b475088413f87665140ecf1fab70b.setIcon(icon_b765dcac2c74ddf6b6292123ecbf5046);
+            
+    
+            var poly_line_769c88e64d7772bb05a3ec05c0e085ad = L.polyline(
+                [[37.7693681, -122.4821837], [37.7976582, -122.481705], [37.7838437, -122.5067531], [37.780252, -122.513625]],
+                {"bubblingMouseEvents": true, "color": "#e6194b", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#e6194b", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.8, "smoothFactor": 1.0, "stroke": true, "weight": 4}
+            ).addTo(feature_group_626eb258704cef760c14abe188dd4073);
+        
+    
+            poly_line_769c88e64d7772bb05a3ec05c0e085ad.bindTooltip(
+                `<div>
+                     Day 1 route
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            feature_group_626eb258704cef760c14abe188dd4073.addTo(map_3e0ec6f25dfdab62f0f461c8da51fa13);
+        
+    
+            var feature_group_607cfed47927768cf7165c4142e08a60 = L.featureGroup(
+                {
+}
+            );
+        
+    
+            var marker_784762ab9662fb10fb1b79c9f110d5e5 = L.marker(
+                [37.9290369, -122.5777214],
+                {
+}
+            ).addTo(feature_group_607cfed47927768cf7165c4142e08a60);
+        
+    
+            var icon_953f0fb3ad615ff1f954cadc1674a875 = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "blue",
+  "iconColor": "white",
+  "icon": "info-sign",
+  "prefix": "glyphicon",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+        var popup_128e47a608b2bd1bc46cafd671b47f24 = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_9c76ac2f088303368b7d7661a088f28f = $(`<div id="html_9c76ac2f088303368b7d7661a088f28f" style="width: 100.0%; height: 100.0%;"><b>Mt. Tam</b><br>Day 2, stop 1</div>`)[0];
+                popup_128e47a608b2bd1bc46cafd671b47f24.setContent(html_9c76ac2f088303368b7d7661a088f28f);
+            
+        
+
+        marker_784762ab9662fb10fb1b79c9f110d5e5.bindPopup(popup_128e47a608b2bd1bc46cafd671b47f24)
+        ;
+
+        
+    
+    
+            marker_784762ab9662fb10fb1b79c9f110d5e5.bindTooltip(
+                `<div>
+                     Day 2 #1: Mt. Tam
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_784762ab9662fb10fb1b79c9f110d5e5.setIcon(icon_953f0fb3ad615ff1f954cadc1674a875);
+            
+    
+            feature_group_607cfed47927768cf7165c4142e08a60.addTo(map_3e0ec6f25dfdab62f0f461c8da51fa13);
+        
+    
+            var layer_control_d91520dc078b0bd13ee162c327ed8ddd_layers = {
+                base_layers : {
+                    "openstreetmap" : tile_layer_2fab830cc857b125e5b6c3bb8b9dab96,
+                },
+                overlays :  {
+                    "Day 1" : feature_group_626eb258704cef760c14abe188dd4073,
+                    "Day 2" : feature_group_607cfed47927768cf7165c4142e08a60,
+                },
+            };
+            let layer_control_d91520dc078b0bd13ee162c327ed8ddd = L.control.layers(
+                layer_control_d91520dc078b0bd13ee162c327ed8ddd_layers.base_layers,
+                layer_control_d91520dc078b0bd13ee162c327ed8ddd_layers.overlays,
+                {
+  "position": "topright",
+  "collapsed": false,
+  "autoZIndex": true,
+}
+            ).addTo(map_3e0ec6f25dfdab62f0f461c8da51fa13);
+
+        
+</script>
+</html>

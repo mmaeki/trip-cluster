@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Callable
 from datetime import time
 
 from trip_cluster.config import (
@@ -17,6 +19,13 @@ from trip_cluster.models import ClusterResult, DayPlan, GeocodedPlace, TravelTim
 class RouteOrderer:
     """Order places within each day cluster for minimum driving time."""
 
+    def __init__(
+        self,
+        *,
+        on_warning: Callable[[str], None] | None = None,
+    ) -> None:
+        self._on_warning = on_warning if on_warning is not None else _default_warning_handler
+
     def build_day_plans(
         self,
         places: list[GeocodedPlace],
@@ -30,6 +39,7 @@ class RouteOrderer:
             cluster,
             matrix,
             day_start=day_start,
+            on_warning=self._on_warning,
         )
 
 
@@ -39,8 +49,12 @@ def build_day_plans(
     matrix: TravelTimeMatrix,
     *,
     day_start: time = DEFAULT_DAY_START,
+    on_warning: Callable[[str], None] | None = None,
 ) -> list[DayPlan]:
     """Build ordered day plans from clustering output and an asymmetric matrix."""
+    warn = on_warning if on_warning is not None else _default_warning_handler
+    warn_for_tags_before_day_start(places, day_start=day_start, on_warning=warn)
+
     day_plans: list[DayPlan] = []
     for day_number, global_indices in enumerate(cluster.day_assignments, start=1):
         if not global_indices:
@@ -61,6 +75,30 @@ def build_day_plans(
             )
         )
     return day_plans
+
+
+def warn_for_tags_before_day_start(
+    places: list[GeocodedPlace],
+    *,
+    day_start: time = DEFAULT_DAY_START,
+    on_warning: Callable[[str], None] | None = None,
+) -> list[str]:
+    """Warn when a requested visit time is earlier than itinerary start."""
+    warn = on_warning if on_warning is not None else _default_warning_handler
+    warnings: list[str] = []
+    for place in places:
+        fixed_time = place.place.fixed_time
+        if fixed_time is None or fixed_time >= day_start:
+            continue
+        message = (
+            f'"{place.place.raw_name}" is tagged for {fixed_time.strftime("%H:%M")}, '
+            f'before --day-start {day_start.strftime("%H:%M")}; '
+            f"set --day-start to {fixed_time.strftime('%H:%M')} or earlier "
+            "to make that arrival possible."
+        )
+        warnings.append(message)
+        warn(message)
+    return warnings
 
 
 def order_day_route(
@@ -370,3 +408,7 @@ def simulate_arrival_times(
 ) -> dict[int, float]:
     """Public helper for output formatting: global index -> arrival seconds."""
     return _simulate_arrivals(route, matrix, day_start=day_start)
+
+
+def _default_warning_handler(message: str) -> None:
+    print(message, file=sys.stderr)
