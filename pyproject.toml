@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "trip-cluster"
 version = "0.1.0"
-description = "Cluster tourist locations into daily itineraries using traffic-aware travel times"
+description = "Cluster tourist locations into daily itineraries using driving travel times"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

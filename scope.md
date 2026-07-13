@@ -2,11 +2,11 @@
 
 ## Executive Summary
 
-TripCluster is a Python CLI that turns a plain-text list of tourist locations into a multi-day itinerary. Places are geocoded, pairwise travel times are fetched from TomTom's Matrix Routing v2 API with live/historical traffic (with OSRM and haversine fallbacks), grouped into `--days` clusters using matrix-based clustering, ordered within each day via a TSP heuristic, and exported as CLI text, JSON, and a folium HTML map.
+TripCluster is a Python CLI that turns a plain-text list of tourist locations into a multi-day itinerary. Places are geocoded, pairwise driving times are fetched from the OSRM Table API (free, no API key), with an optional TomTom traffic-aware mode and a haversine ultimate fallback, grouped into `--days` clusters using matrix-based clustering, ordered within each day via a TSP heuristic, and exported as CLI text, JSON, and a folium HTML map.
 
 **Confirmed design decisions:**
 - **Geographic context:** optional first-line header in the input file (e.g., `# region: Bay Area, CA`)
-- **Routing API:** TomTom Matrix Routing v2 (free tier, traffic-aware) as primary; OSRM public server + haversine as fallbacks
+- **Routing API:** OSRM Table API (primary, no API key, free-flow driving times); TomTom Matrix Routing v2 optional for traffic-aware routing; haversine ultimate fallback
 - **Geocoding:** Nominatim (free, no API key)
 - **Failed geocodes:** abort the run by default; optional `--skip-failures` for lenient mode
 - **Route shape:** open path (no return-to-start loop)
@@ -23,7 +23,7 @@ TripCluster is a Python CLI that turns a plain-text list of tourist locations in
 trip_cluster/
 ├── pyproject.toml              # project metadata, deps, CLI entry point
 ├── README.md                   # setup, API usage policy, examples
-├── .env.example                # TOMTOM_API_KEY, NOMINATIM_USER_AGENT
+├── .env.example                # TRIPCLUSTER_USE_TRAFFIC, TOMTOM_API_KEY (optional), NOMINATIM_USER_AGENT
 ├── .gitignore
 │
 ├── src/trip_cluster/
@@ -42,13 +42,15 @@ trip_cluster/
 │   │   ├── __init__.py
 │   │   ├── base.py             # Geocoder protocol / ABC
 │   │   ├── nominatim.py        # Nominatim client (primary)
+│   │   ├── aliases.py          # common place-name alias expansion
+│   │   ├── query.py            # fallback query chain + spatial candidate ranking
 │   │   └── service.py          # cache-aware geocode orchestration
 │   │
 │   ├── matrix/
 │   │   ├── __init__.py
 │   │   ├── base.py             # MatrixProvider protocol
-│   │   ├── tomtom.py           # TomTom Matrix Routing v2 (primary, traffic-aware)
-│   │   ├── osrm.py             # OSRM Table API (fallback, no traffic)
+│   │   ├── osrm.py             # OSRM Table API (primary, free-flow)
+│   │   ├── tomtom.py           # TomTom Matrix Routing v2 (optional, traffic-aware)
 │   │   ├── haversine.py        # straight-line fallback + speed heuristic
 │   │   └── service.py          # cache, symmetrization, tagged-time overrides
 │   │
@@ -99,43 +101,66 @@ trip-cluster = "trip_cluster.cli:app"
 
 ### Chosen Stack
 
-| Layer | Primary | Fallback | Cost |
-|-------|---------|----------|------|
+| Layer | Primary | Optional / Fallback | Cost |
+|-------|---------|---------------------|------|
 | Geocoding | [Nominatim](https://nominatim.org/) (OSM) | — | Free; 1 req/sec policy |
-| Routing matrix | [TomTom Matrix Routing v2](https://developer.tomtom.com/matrix-routing-v2-api/documentation/product-information/introduction) | [OSRM Table API](http://project-osrm.org/) → haversine | Free tier: 2,500 non-tile transactions/day |
+| Routing matrix | [OSRM Table API](http://project-osrm.org/) (free-flow, no key) | [TomTom Matrix v2](https://developer.tomtom.com/matrix-routing-v2-api/documentation/product-information/introduction) (traffic mode) → haversine | Free; TomTom free tier: 2,500 non-tile transactions/day |
 | Ultimate fallback | Haversine distance ÷ assumed speed | — | Local, no network |
 
-### Why TomTom for v1
+### Why OSRM for v1 (default)
 
-TomTom's free developer tier (no credit card) includes **2,500 non-tile API transactions per day** and access to **Matrix Routing v2** with:
+OSRM's public Table API is the default matrix provider because it fits the core use case — grouping nearby places into daily clusters — without cost or setup friction:
+- **No API key, no billing risk** — nothing to sign up for, nothing to leak, no quota to exhaust.
+- **Good enough for geographic clustering** — clustering depends on *relative* distances between places, which free-flow driving times preserve well.
+- **Accurate on uncongested and rural legs** — in practice OSRM free-flow times closely matched reference driving estimates for routes without heavy traffic.
+- **Asymmetric travel times** (A→B ≠ B→A) via `/table/v1/driving`.
+- **Full N×N in one request** — one call covers a typical trip (N ≤ 20).
+
+The main limitation is that OSRM has **no traffic model**: departure time does not change its estimates. For most personal trip planning this is acceptable, and the optional traffic mode below covers the cases where it is not.
+
+### Optional traffic mode (TomTom)
+
+Traffic-aware routing via TomTom Matrix Routing v2 is **opt-in** and off by default. It is used only when **both** conditions hold:
+1. `TRIPCLUSTER_USE_TRAFFIC=true` (or the `--traffic` CLI flag), and
+2. a valid `TOMTOM_API_KEY` is set.
+
+If traffic mode is requested but no key is present, TripCluster warns and falls back to OSRM. TomTom is never instantiated or called otherwise, so enabling a key alone incurs no API usage — this is the billing safeguard.
+
+TomTom's free developer tier (no credit card) includes **2,500 non-tile API transactions per day** and Matrix Routing v2 with:
 - `traffic: "live"` — real-time traffic for departure times near now
 - `traffic: "historical"` — time-of-day traffic patterns for future `departAt` values
-- `departAt: <RFC3339 datetime>` — departure-time-aware routing (supports `@time` overrides)
-- Asymmetric travel times (A→B ≠ B→A) returned natively
-- Synchronous matrix up to **100 origins × 100 destinations** (10,000 cells) on free tier — more than enough for personal trip planning (typical N ≤ 20)
+- `departAt: <RFC3339 datetime>` — departure-time-aware routing (makes `@time` overrides meaningful)
 
-**Personal-use budget example:** 15 places → one 15×15 sync matrix request. With SQLite caching, reruns cost zero API calls. Tagged-time overrides re-fetch only rows/cols for tagged places (at most `2 × N × k` extra edge batches for k tagged places).
+**When to enable it:** weekday rush-hour trips in congested cities, or itineraries where `@time` tags should shift travel times between peak and off-peak. **Budget example:** 15 places → one 15×15 sync request; SQLite caching makes reruns free. Tagged-time overrides re-fetch only rows/cols for tagged places (at most `2 × N × k` extra edge batches for k tagged places).
 
-**Required setup:** Free API key via [TomTom Developer Portal](https://developer.tomtom.com/) → `TOMTOM_API_KEY` env var.
+**Setup for traffic mode:** free API key via [TomTom Developer Portal](https://developer.tomtom.com/) → `TOMTOM_API_KEY`, plus `TRIPCLUSTER_USE_TRAFFIC=true`.
 
 ### Tradeoffs vs Alternatives
 
 | Option | Traffic-aware? | Free tier | Matrix support | Notes |
 |--------|----------------|-----------|----------------|-------|
-| **TomTom Matrix v2 (chosen)** | Yes (`live` + `historical`) | 2,500 txn/day | Sync ≤100×100 | Best fit for requirements; needs API key |
-| **OSRM (fallback)** | No | Public demo server | Yes (`/table`) | Good offline-style fallback; cache aggressively |
-| **OpenRouteService** | No (free tier) | 500 matrix req/day | Yes | Removed from v1 cascade; can add later |
+| **OSRM (chosen default)** | No (free-flow) | Public demo server | Yes (`/table`) | No key, no billing; cache aggressively |
+| **TomTom Matrix v2 (optional)** | Yes (`live` + `historical`) | 2,500 txn/day | Sync ≤100×100 | Opt-in traffic upgrade; needs API key |
+| **OpenRouteService** | No (free tier) | 500 matrix req/day | Yes | Not in v1 cascade; can add later |
 | **Google Distance Matrix** | Yes | ~$200/mo credit | Yes | Best accuracy but paid beyond hobby scale |
 | **Mapbox Matrix** | Limited on free | 100k coords/mo | Yes (≤25 coords/request) | Requires chunking for large N |
 
-**Provider cascade:**
-1. TomTom Matrix v2 (live traffic for near-term dates, historical for future trip dates)
-2. OSRM `/table` (if TomTom fails, rate-limits, or key missing)
-3. Haversine with assumed urban speed (40 kph default)
+**Provider cascade (default):**
+1. SQLite cache hit → use cached
+2. OSRM `/table` — free-flow driving times
+3. Haversine with assumed urban speed (40 kph default) if OSRM fails
+
+**Provider cascade (traffic mode enabled):**
+1. SQLite cache hit → use cached
+2. TomTom Matrix v2 (live traffic for today, historical for future dates)
+3. OSRM `/table` per-cell gap fill / fallback if TomTom fails
+4. Haversine if OSRM also fails
 
 Design remains behind a `MatrixProvider` protocol so providers can be swapped without touching clustering/routing.
 
-### TomTom-Specific Design Choices
+### TomTom Design Choices (traffic mode only)
+
+These settings apply only when traffic mode is enabled:
 
 | Setting | Default matrix | Tagged-place override |
 |---------|----------------|----------------------|
@@ -144,18 +169,18 @@ Design remains behind a `MatrixProvider` protocol so providers can be swapped wi
 | `travelMode` | `"car"` | `"car"` |
 | `routeType` | `"fastest"` | `"fastest"` |
 
-**Trip date:** New optional `--trip-date YYYY-MM-DD` flag (default: today in local timezone). Combined with `--day-start` and `@time` tags to build RFC 3339 `departAt` values TomTom requires.
+**Trip date:** optional `--trip-date YYYY-MM-DD` flag (default: today in local timezone). Combined with `--day-start` and `@time` tags to build RFC 3339 `departAt` values. In default (OSRM) mode these values only key the cache; they change routing only in traffic mode.
 
 ### API Usage Notes
 
 - **Nominatim** requires a descriptive `User-Agent` (configurable via env). Respect 1 req/sec; the geocoding service will throttle.
-- **TomTom** returns `429` when daily quota exceeded → fall back to OSRM for that request, cache result with `source=tomtom|osrm|haversine`.
-- **OSRM public server** is not SLA-backed; acceptable for personal use with caching as fallback only.
+- **OSRM public server** is not SLA-backed; acceptable for personal use with aggressive caching and a haversine fallback.
+- **TomTom** (traffic mode) returns `429` when the daily quota is exceeded → fall back to OSRM for that request, cache result with `source=tomtom|osrm|haversine`.
 - **Region header** is passed to Nominatim as query context (appended as `"{name}, {region}"`).
 
 ### Realistic Cost for Personal Use
 
-For 15 places on first run: 15 geocode calls + 1 TomTom matrix call ≈ ~16 non-tile transactions. Well within 2,500/day. SQLite cache makes reruns nearly free.
+Default mode is free: 15 places on first run = 15 Nominatim geocode calls + 1 OSRM matrix request, no API keys and no quota. SQLite caching makes reruns nearly free. Traffic mode adds TomTom transactions (~1 matrix call per run, well within 2,500/day) only when explicitly enabled.
 
 ---
 
@@ -170,8 +195,8 @@ flowchart TD
     geocoder --> nominatim[NominatimAPI]
     geocoder --> geocoded[GeocodedPlaces]
     geocoded --> matrixSvc[MatrixService]
-    matrixSvc --> tomtom[TomTomMatrixV2]
-    matrixSvc --> osrm[OSRMFallback]
+    matrixSvc --> osrm[OSRMMatrix]
+    matrixSvc -.->|"if traffic mode"| tomtom[TomTomOptional]
     matrixSvc --> haversine[HaversineFallback]
     matrixSvc --> matrix[NxNTimeMatrix]
     matrix --> clusterer[Clusterer]
@@ -245,7 +270,7 @@ class Place:
 - **Asymmetric** matrix preserved for routing/TSP
 - **Symmetrized** copy `(d_ij + d_ji) / 2` used only for clustering (sklearn requires symmetric precomputed distances)
 
-**Default departure time:** `{trip_date}T{day_start}` (e.g., `2026-07-15T09:00:00`). TomTom uses this for `departAt` with `traffic: "live"` (today) or `"historical"` (future dates).
+**Default departure time:** `{trip_date}T{day_start}` (e.g., `2026-07-15T09:00:00`). This value always keys the matrix cache (`departure_bucket`). It changes routing **only in traffic mode**, where TomTom uses it as `departAt` with `traffic: "live"` (today) or `"historical"` (future dates). In default OSRM mode it is cache metadata only — OSRM free-flow times do not vary by departure time.
 
 **Tagged-time override behavior:**
 
@@ -258,18 +283,27 @@ flowchart LR
     merge --> done
 ```
 
-For each tagged place `T` at time `t_T`:
-- Re-fetch all edges `T → *` and `* → T` via TomTom with `departAt: {trip_date}T{t_T}` and appropriate `traffic` mode
-- Untagged edges remain at default `day_start` departure
-- With TomTom, these overrides produce **meaningfully different** travel times (rush hour vs off-peak)
+For each tagged place `T` at time `t_T`, TripCluster re-fetches all edges `T → *` and `* → T` at the tagged departure bucket; untagged edges remain at the default `day_start` bucket. What the override actually produces depends on the mode:
 
-**Provider cascade per matrix batch:**
+| Mode | `@time` tag effect |
+|------|--------------------|
+| Default (OSRM) | Overrides still run and populate separate cache buckets, but OSRM returns the **same free-flow times** regardless of departure. The tag has no travel-time effect today; it is preserved for correctness and for reuse if traffic mode is later enabled. |
+| Traffic mode (TomTom) | Overrides produce **meaningfully different** travel times (rush hour vs off-peak) via `departAt`. |
+
+Planned CLI behavior (module 8): warn `"@time tags have no effect without --traffic"` when tags are present in default mode.
+
+**Provider cascade per matrix batch (default):**
+1. SQLite cache hit → use cached
+2. **OSRM** `/table/v1/driving/{coords}` — full N×N in one call
+3. **Haversine:** `time = distance_km / ASSUMED_SPEED_KPH * 3600` (default 40 kph urban) if OSRM fails
+
+**Provider cascade per matrix batch (traffic mode):**
 1. SQLite cache hit → use cached
 2. **TomTom** synchronous matrix POST (`/routing/matrix/2`) — full N×N in one call
-3. **OSRM** `/table/v1/driving/{coords}` (if TomTom fails, 429 quota, or `TOMTOM_API_KEY` missing)
-4. **Haversine:** `time = distance_km / ASSUMED_SPEED_KPH * 3600` (default 40 kph urban)
+3. **OSRM** `/table/v1/driving/{coords}` — per-cell gap fill or full fallback if TomTom fails
+4. **Haversine** if OSRM also fails
 
-**TomTom request shape (v1):**
+**TomTom request shape (traffic mode):**
 ```json
 {
   "origins": [{"point": {"latitude": 37.77, "longitude": -122.42}}, ...],
@@ -380,9 +414,11 @@ Day 2 ...
     }
   ],
   "warnings": [],
-  "matrix_source": "tomtom"
+  "matrix_source": "osrm"
 }
 ```
+
+(`matrix_source` is one of `osrm | tomtom | haversine | cache` depending on which provider produced the majority of edges.)
 
 **HTML map** (`--output-map`):
 - Single folium `Map` centered on centroid of all places
@@ -468,10 +504,10 @@ flowchart TD
 
 ## Implementation Checklist
 
-- [ ] **1.** `models.py` + `input/parser.py` (region header, `@time` tags) with parser unit tests
-- [ ] **2.** `cache/sqlite.py` with geocode and matrix cache schemas
-- [ ] **3.** Nominatim geocoder + cache-aware service with failure handling
-- [ ] **4.** TomTom Matrix v2 (live traffic) + OSRM/haversine fallbacks with tagged-time overrides and caching
+- [x] **1.** `models.py` + `input/parser.py` (region header, `@time` tags) with parser unit tests
+- [x] **2.** `cache/sqlite.py` with geocode and matrix cache schemas
+- [x] **3.** Nominatim geocoder + cache-aware service with failure handling
+- [x] **4.** OSRM matrix (default) + optional TomTom traffic mode + haversine fallbacks, with tagged-time overrides and caching
 - [ ] **5.** Agglomerative clustering with symmetrized matrix, `--days`, `--max-per-day` split pass
 - [ ] **6.** Nearest-neighbor + 2-opt ordering with timed-place anchors
 - [ ] **7.** Text summary, JSON export, and folium HTML map
@@ -490,6 +526,7 @@ trip-cluster --input places.txt --days 3 \
   [--day-start 09:00] \
   [--trip-date 2026-07-15] \
   [--cache-db ~/.tripcluster/cache.db] \
+  [--traffic] \
   [--skip-failures] \
   [--cluster-method agglomerative]
 ```
@@ -503,14 +540,18 @@ trip-cluster --input places.txt --days 3 \
 | `--max-per-day` | No | unlimited |
 | `--day-start` | No | `09:00` |
 | `--trip-date` | No | today (local timezone) |
+| `--traffic` | No | off (OSRM free-flow); enables TomTom, requires `TOMTOM_API_KEY` |
 | `--skip-failures` | No | off (abort on geocode failure) |
 | `--cache-db` | No | `~/.tripcluster/cache.db` |
+
+`--traffic` overrides the `TRIPCLUSTER_USE_TRAFFIC` env var when both are set.
 
 **Environment variables:**
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `TOMTOM_API_KEY` | Yes (for traffic matrix) | TomTom Matrix Routing v2 |
+| `TRIPCLUSTER_USE_TRAFFIC` | No | `true` to enable TomTom traffic-aware routing (default: off, uses OSRM) |
+| `TOMTOM_API_KEY` | No (required only with traffic mode) | TomTom Matrix Routing v2 |
 | `NOMINATIM_USER_AGENT` | Recommended | Nominatim usage policy compliance |
 
 ---
@@ -519,12 +560,12 @@ trip-cluster --input places.txt --days 3 \
 
 | # | Question | Decision |
 |---|----------|----------|
-| 1 | Traffic-aware routing | **TomTom Matrix v2** free tier (`live` + `historical` traffic); OSRM/haversine fallbacks |
+| 1 | Traffic-aware routing | **OSRM free-flow by default** (no key); **TomTom opt-in** via `TRIPCLUSTER_USE_TRAFFIC` / `--traffic`; haversine ultimate fallback |
 | 2 | `--max-per-day` | Optional flag, **unlimited by default** |
 | 3 | Failed geocodes | **Abort by default**; `--skip-failures` for lenient mode |
 | 4 | Route shape | **Open path** (no return-to-start) |
 | 5 | Day start time | **`--day-start` defaults to `09:00`** |
-| 6 | OSRM reliability | **Personal use with caching** as fallback when TomTom unavailable |
+| 6 | OSRM reliability | **OSRM is primary** with SQLite caching and haversine fallback; TomTom quota/key issues are irrelevant unless traffic mode is enabled |
 | 7 | `@time` tag semantics | **Soft preference** — optimize toward tagged time, report deviation |
 | 8 | Duplicate places | **Deduplicate** — keep first occurrence, warn on skipped duplicates |
 
@@ -536,9 +577,10 @@ trip-cluster --input places.txt --days 3 \
 
 | Risk | Mitigation |
 |------|------------|
-| TomTom daily quota exceeded (2,500 txn/day) | SQLite cache; fall back to OSRM; warn when serving cached/fallback data |
-| TomTom API key missing | Fall back to OSRM + warn; document key setup in README |
-| OSRM public server downtime | Haversine fallback + aggressive cache |
+| OSRM public server downtime / rate limits | SQLite cache; haversine fallback; warn when serving fallback data |
+| OSRM free-flow underestimates rush-hour traffic | Documented limitation; opt into `--traffic` (TomTom) for peak-hour urban trips |
+| TomTom daily quota exceeded (traffic mode only) | SQLite cache; fall back to OSRM; warn when serving cached/fallback data |
+| TomTom API key missing with `--traffic` | Warn and fall back to OSRM (implemented) |
 | Nominatim rate limits | 1 req/sec throttle, cache, batch reruns are free |
 | Asymmetric matrix + sklearn | Symmetrize only for clustering; keep raw for routing |
 | Clustering with very small N | Guard rails for edge cases (n < days, n == 1) |
@@ -553,4 +595,4 @@ Implementation proceeds **module by module** in the build order above. Each modu
 2. Unit tests
 3. Review before proceeding to the next module
 
-**Prerequisite before module 4 (matrix):** Sign up for a free TomTom API key and set `TOMTOM_API_KEY` in `.env`.
+**No API keys required:** Modules 1–4 are complete and run entirely on free services (Nominatim + OSRM). TomTom setup is optional and only needed for traffic mode (`TRIPCLUSTER_USE_TRAFFIC=true` / `--traffic`). Next up is module 5 (clustering).
