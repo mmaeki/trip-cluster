@@ -1,6 +1,6 @@
 # TripCluster
 
-Multi-day travel itinerary planner. See [scope.md](scope.md) for the technical design.
+Multi-day travel itinerary planner.
 
 Routing uses the free OSRM Table API by default (no API key). Traffic-aware routing via TomTom is optional: set `TRIPCLUSTER_USE_TRAFFIC=true` and `TOMTOM_API_KEY` (or pass `--traffic`).
 
@@ -83,8 +83,6 @@ The file is written relative to your current working directory (e.g. `trip_clust
 Copy `.env.example` to `.env` for local secrets (gitignored).
 
 ## Testing your own data
-
-You can use your own input file now. Module 9 adds automated integration tests with mocked APIs; it does not block real usage.
 
 ```bash
 trip-cluster --input /path/to/my_places.txt --days 2 --output-map map.html
